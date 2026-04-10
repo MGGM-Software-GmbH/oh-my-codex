@@ -184,6 +184,8 @@ For non-team sessions, native Codex hooks are now the canonical lifecycle surfac
 - `.codex/hooks.json` = native Codex hook registrations
 - `.omx/hooks/*.mjs` = OMX plugin hooks
 - `omx tmux-hook` / notify-hook / derived watcher = tmux + runtime fallback paths
+- hook keyword/stall heuristics are localization-aware: English stays enabled, OMX also loads the system locale when supported (`de`, `ko` today)
+- override the preferred hook locale from `.codex/config.toml` via `[env] OMX_LOCALE = "de"`
 
 See [Codex native hook mapping](./docs/codex-native-hooks.md) for the current native / fallback matrix.
 
