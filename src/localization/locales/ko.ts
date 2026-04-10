@@ -17,6 +17,7 @@ export const KO_LOCALIZATION: LocalizationCatalog = {
     abortInputs: [],
     stallPatterns: [],
     semanticStallPrompts: [],
+    permissionSeekingStallPatterns: [],
     handoffPatterns: [],
     retryPatterns: [],
     languageReminderText: '[OMX_LANG_REMINDER] User input includes non-Latin script. Continue in the user\'s language.',

@@ -291,6 +291,22 @@ describe('notify-hook/auto-nudge – detectStallPattern', () => {
     assert.equal(detectStallPattern('I can continue with the plan from here.', DEFAULT_STALL_PATTERNS), false);
   });
 
+  it('does not treat localized German permission prompts as default auto-nudge stalls', async () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      const { detectStallPattern, normalizeAutoNudgeConfig } = await loadModule('notify-hook/auto-nudge.js');
+      const localizedDefaults = normalizeAutoNudgeConfig(null).patterns;
+      assert.equal(detectStallPattern('Wenn du möchtest, kann ich als Nächstes refaktorieren.', localizedDefaults), false);
+      assert.equal(detectStallPattern('Wenn du willst, kann ich als Nächstes refaktorieren.', localizedDefaults), false);
+      assert.equal(detectStallPattern('Möchtest du, dass ich fortfahre?', localizedDefaults), false);
+      assert.equal(detectStallPattern('Soll ich weitermachen?', localizedDefaults), false);
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
+  });
+
   it('returns false when no stall pattern present', async () => {
     const { detectStallPattern, DEFAULT_STALL_PATTERNS } = await loadModule('notify-hook/auto-nudge.js');
     assert.equal(detectStallPattern('All tests pass. Build succeeded.', DEFAULT_STALL_PATTERNS), false);

@@ -79,6 +79,7 @@ export function getLocalizedAutoNudgeCatalog(env: NodeJS.ProcessEnv = process.en
   const abortInputs: string[] = [];
   const stallPatterns: string[] = [];
   const semanticStallPrompts: string[] = [];
+  const permissionSeekingStallPatterns: string[] = [];
   const handoffPatterns: string[] = [];
   const retryPatterns: string[] = [];
   let inputLockMessage = EN_LOCALIZATION.autoNudge.inputLockMessage;
@@ -92,6 +93,7 @@ export function getLocalizedAutoNudgeCatalog(env: NodeJS.ProcessEnv = process.en
     abortInputs.push(...catalog.autoNudge.abortInputs);
     stallPatterns.push(...catalog.autoNudge.stallPatterns);
     semanticStallPrompts.push(...catalog.autoNudge.semanticStallPrompts);
+    permissionSeekingStallPatterns.push(...catalog.autoNudge.permissionSeekingStallPatterns);
     handoffPatterns.push(...catalog.autoNudge.handoffPatterns);
     retryPatterns.push(...catalog.autoNudge.retryPatterns);
     inputLockMessage = catalog.autoNudge.inputLockMessage || inputLockMessage;
@@ -107,6 +109,7 @@ export function getLocalizedAutoNudgeCatalog(env: NodeJS.ProcessEnv = process.en
     abortInputs: dedupeStrings(abortInputs),
     stallPatterns: dedupeStrings(stallPatterns),
     semanticStallPrompts: dedupeStrings(semanticStallPrompts),
+    permissionSeekingStallPatterns: dedupeStrings(permissionSeekingStallPatterns),
     handoffPatterns: dedupeStrings(handoffPatterns),
     retryPatterns: dedupeStrings(retryPatterns),
     languageReminderText,

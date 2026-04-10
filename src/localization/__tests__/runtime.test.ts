@@ -27,6 +27,8 @@ describe('localization runtime', () => {
     assert.ok(autoNudge.stallPatterns.includes('mach weiter'));
     assert.ok(autoNudge.stallPatterns.includes('wenn du willst'));
     assert.ok(autoNudge.semanticStallPrompts.includes('wenn du willst'));
+    assert.ok(autoNudge.permissionSeekingStallPatterns.includes('if you want'));
+    assert.ok(autoNudge.permissionSeekingStallPatterns.includes('wenn du willst'));
 
     const roleRouter = getLocalizedRoleRouterCatalog({ OMX_LOCALE: 'de' } as NodeJS.ProcessEnv);
     assert.ok(roleRouter.docsIntentTargets.includes('documentation'));

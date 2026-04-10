@@ -63,6 +63,11 @@ export const EN_LOCALIZATION: LocalizationCatalog = {
       'continue with', 'continue on', 'pick up with', 'keep going', "and i'll continue", 'keep driving', 'keep pushing',
       'move forward', 'drive forward', "i'll continue from",
     ],
+    permissionSeekingStallPatterns: [
+      'if you want', 'would you like', 'shall i', 'should i', 'do you want me to', 'do you want', 'want me to',
+      'let me know if', 'let me know', 'just let me know', 'i can also', 'i could also', 'next i can', 'whenever you',
+      'say go', 'say yes', 'type continue', 'proceed from here',
+    ],
     handoffPatterns: ['handoff', 'hand off', 'next i can do one of', 'if you want, next i can', 'choose one of', 'recommended handoff'],
     retryPatterns: ['retry', 'rerun', 're-run', 'try again'],
     languageReminderText: '[OMX_LANG_REMINDER] User input includes non-Latin script. Continue in the user\'s language.',

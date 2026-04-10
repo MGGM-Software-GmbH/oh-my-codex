@@ -308,6 +308,10 @@ const PERMISSION_SEEKING_STALL_PATTERNS = [
   'proceed from here',
 ];
 
+function getPermissionSeekingStallPatterns(): string[] {
+  return [...PERMISSION_SEEKING_STALL_PATTERNS, ...getLocalizedAutoNudgeCatalog().permissionSeekingStallPatterns];
+}
+
 function normalizeStallDetectionText(text) {
   return stripOrchestrationIntentTags(safeString(text))
     .replace(/\r\n?/g, '\n')
@@ -366,7 +370,7 @@ function looksLikePlanningOnlyContinuation(normalizedText) {
 }
 
 function looksLikePermissionSeekingContinuation(normalizedText) {
-  return matchesNormalizedPatterns(normalizedText, normalizePatternList(PERMISSION_SEEKING_STALL_PATTERNS));
+  return matchesNormalizedPatterns(normalizedText, normalizePatternList(getPermissionSeekingStallPatterns()));
 }
 
 function summarizePaneCaptureForLog(captured, maxLines = 6) {

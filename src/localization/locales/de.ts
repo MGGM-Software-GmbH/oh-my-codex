@@ -54,6 +54,11 @@ export const DE_LOCALIZATION: LocalizationCatalog = {
       'fortfahren mit', 'lass es mich wissen', 'bereit weiterzumachen', 'bereit fortzufahren', 'mach weiter', 'sag ja', 'sag weiter',
       'tippe weiter', 'und ich mache weiter', 'und ich fahre fort', 'von hier aus fortfahren', 'nächster schritt', 'nächste schritte',
     ],
+    permissionSeekingStallPatterns: [
+      'wenn du möchtest', 'wenn du willst', 'möchtest du', 'soll ich', 'als nächstes kann ich', 'gib mir bescheid',
+      'lass es mich wissen', 'bereit weiterzumachen', 'bereit fortzufahren', 'sag ja', 'sag weiter', 'tippe weiter',
+      'von hier aus fortfahren', 'nächster schritt', 'nächste schritte',
+    ],
     handoffPatterns: ['übergabe', 'übergeben', 'wenn du möchtest kann ich als nächstes', 'wähle eine option', 'empfohlene übergabe'],
     retryPatterns: ['erneut versuchen', 'neu versuchen', 'wiederholen', 'noch einmal'],
     languageReminderText: '[OMX_LANG_REMINDER] Die Nutzereingabe ist nicht primär englisch. Antworte in der Sprache des Nutzers.',

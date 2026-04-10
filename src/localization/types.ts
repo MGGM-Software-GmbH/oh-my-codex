@@ -20,6 +20,7 @@ export interface LocalizedAutoNudgeCatalog {
   abortInputs: readonly string[];
   stallPatterns: readonly string[];
   semanticStallPrompts: readonly string[];
+  permissionSeekingStallPatterns: readonly string[];
   handoffPatterns: readonly string[];
   retryPatterns: readonly string[];
   languageReminderText: string;
