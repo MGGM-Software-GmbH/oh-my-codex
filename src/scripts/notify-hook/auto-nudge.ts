@@ -349,6 +349,12 @@ function normalizePatternList(patterns) {
   return patterns.map((pattern) => normalizeStallDetectionText(pattern)).filter(Boolean);
 }
 
+function normalizeConfigPatternList(value) {
+  return Array.isArray(value) && value.length > 0
+    ? value.filter(p => typeof p === 'string' && p.trim() !== '')
+    : [];
+}
+
 function usesDefaultStallPatterns(patterns) {
   const normalizedPatterns = normalizePatternList(patterns);
   const defaultSets = [DEFAULT_STALL_PATTERNS, getDefaultStallPatterns()].map((defaults) => normalizePatternList(defaults));
@@ -388,6 +394,7 @@ export function normalizeAutoNudgeConfig(raw) {
     return {
       enabled: true,
       patterns: getDefaultStallPatterns(),
+      forcePatterns: [],
       response: 'yes, proceed',
       delaySec: 3,
       stallMs: 5000,
@@ -399,6 +406,7 @@ export function normalizeAutoNudgeConfig(raw) {
     patterns: Array.isArray(raw.patterns) && raw.patterns.length > 0
       ? raw.patterns.filter(p => typeof p === 'string' && p.trim() !== '')
       : getDefaultStallPatterns(),
+    forcePatterns: normalizeConfigPatternList(raw.forcePatterns),
     response: typeof raw.response === 'string' && raw.response.trim() !== ''
       ? raw.response
       : 'yes, proceed',
@@ -447,6 +455,12 @@ export function detectStallPattern(text, patterns, currentPhase = '') {
   if (looksLikePermissionSeekingContinuation(normalized)) return false;
   if (safeString(currentPhase).trim().toLowerCase() === 'planning') return false;
   return !looksLikePlanningOnlyContinuation(normalized);
+}
+
+export function detectConfiguredAutoNudgeStall(text, config, currentPhase = '') {
+  const forcePatterns = Array.isArray(config?.forcePatterns) ? config.forcePatterns : [];
+  if (detectStallPattern(text, forcePatterns)) return true;
+  return detectStallPattern(text, config?.patterns ?? getDefaultStallPatterns(), currentPhase);
 }
 
 export async function capturePane(paneId, lines = 10) {
@@ -536,13 +550,13 @@ export async function maybeAutoNudge({ cwd, stateDir, logsDir, payload }) {
     }
     const paneId = await resolveNudgePaneTarget(stateDir, cwd, payload);
 
-    let detected = detectStallPattern(lastMessage, config.patterns, skillState?.phase);
+    let detected = detectConfiguredAutoNudgeStall(lastMessage, config, skillState?.phase);
     let source = 'payload';
     let captured = '';
 
     if (!detected && paneId) {
       captured = await capturePane(paneId);
-      detected = detectStallPattern(captured, config.patterns, skillState?.phase);
+      detected = detectConfiguredAutoNudgeStall(captured, config, skillState?.phase);
       source = 'capture-pane';
     }
 

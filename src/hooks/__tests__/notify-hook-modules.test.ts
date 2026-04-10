@@ -359,6 +359,7 @@ describe('notify-hook/auto-nudge – normalizeAutoNudgeConfig', () => {
     const cfg = normalizeAutoNudgeConfig(null);
     assert.equal(cfg.enabled, true);
     assert.deepEqual(cfg.patterns, DEFAULT_STALL_PATTERNS);
+    assert.deepEqual(cfg.forcePatterns, []);
     assert.equal(cfg.response, 'yes, proceed');
     assert.equal(cfg.delaySec, 3);
     assert.equal(cfg.ttlMs, 30_000);
@@ -400,11 +401,30 @@ describe('notify-hook/auto-nudge – normalizeAutoNudgeConfig', () => {
     assert.deepEqual(cfg.patterns, ['awaiting input', 'ping me']);
   });
 
+  it('accepts forcePatterns array and filters empty entries', async () => {
+    const { normalizeAutoNudgeConfig } = await loadModule('notify-hook/auto-nudge.js');
+    const cfg = normalizeAutoNudgeConfig({ forcePatterns: ['wenn du willst', ' ', 'möchtest du'] });
+    assert.deepEqual(cfg.forcePatterns, ['wenn du willst', 'möchtest du']);
+  });
+
   it('filters empty strings from patterns', async () => {
     const { normalizeAutoNudgeConfig, DEFAULT_STALL_PATTERNS } = await loadModule('notify-hook/auto-nudge.js');
     // Empty array → fall back to defaults
     const cfg = normalizeAutoNudgeConfig({ patterns: [] });
     assert.deepEqual(cfg.patterns, DEFAULT_STALL_PATTERNS);
+  });
+});
+
+describe('notify-hook/auto-nudge – detectConfiguredAutoNudgeStall', () => {
+  it('lets forcePatterns bypass default permission/planning suppression', async () => {
+    const { detectConfiguredAutoNudgeStall, normalizeAutoNudgeConfig } = await loadModule('notify-hook/auto-nudge.js');
+    const baseConfig = normalizeAutoNudgeConfig(null);
+    const forceConfig = normalizeAutoNudgeConfig({ forcePatterns: ['wenn du willst', 'continue with'] });
+
+    assert.equal(detectConfiguredAutoNudgeStall('Wenn du willst, kann ich als Nächstes refaktorieren.', baseConfig), false);
+    assert.equal(detectConfiguredAutoNudgeStall('Wenn du willst, kann ich als Nächstes refaktorieren.', forceConfig), true);
+    assert.equal(detectConfiguredAutoNudgeStall('I can continue with the plan from here.', baseConfig, 'planning'), false);
+    assert.equal(detectConfiguredAutoNudgeStall('I can continue with the plan from here.', forceConfig, 'planning'), true);
   });
 });
 

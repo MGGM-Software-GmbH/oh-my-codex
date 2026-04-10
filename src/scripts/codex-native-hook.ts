@@ -27,7 +27,7 @@ import {
   type SkillActiveState,
 } from "../hooks/keyword-detector.js";
 import {
-  detectStallPattern,
+  detectConfiguredAutoNudgeStall,
   loadAutoNudgeConfig,
   normalizeAutoNudgeSignatureText,
   resolveEffectiveAutoNudgeResponse,
@@ -1089,7 +1089,7 @@ async function buildStopHookOutput(
 
     if (
       autoNudgeConfig.enabled
-      && detectStallPattern(lastAssistantMessage, autoNudgeConfig.patterns)
+      && detectConfiguredAutoNudgeStall(lastAssistantMessage, autoNudgeConfig)
     ) {
       const effectiveResponse = resolveEffectiveAutoNudgeResponse(autoNudgeConfig.response);
       return await maybeReturnRepeatableStopOutput(
