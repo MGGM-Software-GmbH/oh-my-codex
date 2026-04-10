@@ -19,8 +19,25 @@ const TEST_SEGMENT_PATTERNS = [
 
 const PR_CREATE_SEGMENT_RE = /^gh\s+pr\s+create\b/i;
 const SEARCH_SEGMENT_RE = /^(?:rg|grep|ag|ack|find|sed|awk|cat|printf|echo)\b/i;
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasWordEdge(value: string): boolean {
+  return /[\p{L}\p{N}_]/u.test(value);
+}
+
+function buildLiteralPattern(value: string): RegExp {
+  const normalized = value.trim();
+  const escaped = escapeRegexLiteral(normalized);
+  const prefix = hasWordEdge(normalized[0] ?? '') ? '(?<![\\p{L}\\p{N}_])' : '';
+  const suffix = hasWordEdge(normalized.at(-1) ?? '') ? '(?![\\p{L}\\p{N}_])' : '';
+  return new RegExp(`${prefix}${escaped}${suffix}`, 'iu');
+}
+
 function buildLiteralPatterns(values: readonly string[]): RegExp[] {
-  return values.map((value) => new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu'));
+  return values.map(buildLiteralPattern);
 }
 
 function gitValue(cwd: any, args: string[]): string {

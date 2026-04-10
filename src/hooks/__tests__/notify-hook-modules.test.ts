@@ -229,6 +229,13 @@ describe('notify-hook/operational-events – deriveAssistantSignalEvents', () =>
     );
   });
 
+  it('does not derive handoff/retry signals from word substrings', async () => {
+    const { deriveAssistantSignalEvents } = await loadModule('notify-hook/operational-events.js');
+    const signals = deriveAssistantSignalEvents('The retryable worker handoffs field is metadata, not an actionable request.');
+    assert.equal(signals.some((signal: { event?: string }) => signal.event === 'handoff-needed'), false);
+    assert.equal(signals.some((signal: { event?: string }) => signal.event === 'retry-needed'), false);
+  });
+
   it('detects German handoff and retry phrases when OMX_LOCALE=de', async () => {
     const previous = process.env.OMX_LOCALE;
     process.env.OMX_LOCALE = 'de';
@@ -391,6 +398,20 @@ describe('notify-hook/auto-nudge – resolveEffectiveAutoNudgeResponse', () => {
     assert.equal(resolveEffectiveAutoNudgeResponse('yes, proceed'), DEFAULT_AUTO_NUDGE_RESPONSE);
     assert.equal(resolveEffectiveAutoNudgeResponse('continue'), DEFAULT_AUTO_NUDGE_RESPONSE);
     assert.equal(resolveEffectiveAutoNudgeResponse('custom follow-up'), 'custom follow-up');
+  });
+
+  it('maps localized approval-style responses to a non-authorizing continuation message', async () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      const { DEFAULT_AUTO_NUDGE_RESPONSE, resolveEffectiveAutoNudgeResponse } = await loadModule('notify-hook/auto-nudge.js');
+      assert.equal(resolveEffectiveAutoNudgeResponse('ja'), DEFAULT_AUTO_NUDGE_RESPONSE);
+      assert.equal(resolveEffectiveAutoNudgeResponse('mach weiter'), DEFAULT_AUTO_NUDGE_RESPONSE);
+      assert.equal(resolveEffectiveAutoNudgeResponse('benutzerdefinierte fortsetzung'), 'benutzerdefinierte fortsetzung');
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
   });
 });
 

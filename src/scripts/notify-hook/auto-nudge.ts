@@ -415,7 +415,7 @@ export function normalizeAutoNudgeConfig(raw) {
 export function resolveEffectiveAutoNudgeResponse(response) {
   const normalized = safeString(response).trim();
   if (!normalized) return DEFAULT_AUTO_NUDGE_RESPONSE;
-  return isBlockedAutoApprovalInput(normalized) ? DEFAULT_AUTO_NUDGE_RESPONSE : normalized;
+  return isBlockedAutoApprovalInput(normalized, getDeepInterviewBlockedApprovalInputs()) ? DEFAULT_AUTO_NUDGE_RESPONSE : normalized;
 }
 
 export async function loadAutoNudgeConfig() {
