@@ -45,12 +45,12 @@ export const DE_LOCALIZATION: LocalizationCatalog = {
     abortPatterns: ['abgebrochen', 'abbrechen', 'abbruch', 'storniert'],
     abortInputs: ['abbrechen', 'stopp', 'stop'],
     stallPatterns: [
-      'wenn du möchtest', 'möchtest du', 'soll ich', 'als nächstes kann ich', 'weitermachen mit', 'weiter machen mit',
+      'wenn du möchtest', 'wenn du willst', 'möchtest du', 'soll ich', 'als nächstes kann ich', 'weitermachen mit', 'weiter machen mit',
       'fortfahren mit', 'gib mir bescheid', 'lass es mich wissen', 'bereit weiterzumachen', 'bereit fortzufahren', 'mach weiter',
       'sag ja', 'sag weiter', 'tippe weiter', 'und ich mache weiter', 'und ich fahre fort', 'von hier aus fortfahren', 'nächster schritt', 'nächste schritte',
     ],
     semanticStallPrompts: [
-      'wenn du möchtest', 'möchtest du', 'soll ich', 'als nächstes kann ich', 'weitermachen mit', 'weiter machen mit',
+      'wenn du möchtest', 'wenn du willst', 'möchtest du', 'soll ich', 'als nächstes kann ich', 'weitermachen mit', 'weiter machen mit',
       'fortfahren mit', 'lass es mich wissen', 'bereit weiterzumachen', 'bereit fortzufahren', 'mach weiter', 'sag ja', 'sag weiter',
       'tippe weiter', 'und ich mache weiter', 'und ich fahre fort', 'von hier aus fortfahren', 'nächster schritt', 'nächste schritte',
     ],
