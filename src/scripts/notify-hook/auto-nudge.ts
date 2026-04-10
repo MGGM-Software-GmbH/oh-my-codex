@@ -21,6 +21,8 @@ import { logTmuxHookEvent } from './log.js';
 import { evaluatePaneInjectionReadiness, mapPaneInjectionReadinessReason, sendPaneInput } from './team-tmux-guard.js';
 import { stripOrchestrationIntentTags } from './orchestration-intent.js';
 import { buildCapturePaneArgv, DEFAULT_MARKER, tmuxHookExplicitlyDisablesInjection } from '../tmux-hook-engine.js';
+import { buildLocalizedKeywordPattern } from '../../localization/matcher.js';
+import { getLocalizedAutoNudgeCatalog } from '../../localization/runtime.js';
 import {
   isManagedOmxSession,
   resolveManagedCurrentPane,
@@ -34,12 +36,43 @@ export const SKILL_ACTIVE_STATE_FILE = 'skill-active-state.json';
 export const DEEP_INTERVIEW_BLOCKED_APPROVAL_INPUTS = ['yes', 'y', 'proceed', 'continue', 'ok', 'sure', 'go ahead', 'next i should'];
 export const DEEP_INTERVIEW_INPUT_LOCK_MESSAGE = 'Deep interview is active; auto-approval shortcuts are blocked until the interview finishes.';
 export const DEFAULT_AUTO_NUDGE_RESPONSE = 'continue with the current task only if it is already authorized';
-const DEEP_INTERVIEW_ERROR_PATTERNS = [' error', ' failed', ' failure', ' exception', 'unable to continue', 'cannot continue', 'could not continue'];
-const DEEP_INTERVIEW_ABORT_PATTERNS = ['aborted', 'cancelled', 'canceled'];
-const DEEP_INTERVIEW_ABORT_INPUTS = new Set(['abort', 'cancel', 'stop']);
-const DEEP_INTERVIEW_BLOCKED_APPROVAL_PREFIXES = new Set(['next i should']);
 const SKILL_PHASES = new Set(['planning', 'executing', 'reviewing', 'completing']);
 const DEFAULT_AUTO_NUDGE_TTL_MS = 30_000;
+
+function getDeepInterviewBlockedApprovalInputs(): string[] {
+  return getLocalizedAutoNudgeCatalog().blockedApprovals;
+}
+
+function getDeepInterviewBlockedApprovalPrefixes(): Set<string> {
+  return new Set(getLocalizedAutoNudgeCatalog().blockedPrefixes.map((entry) => normalizeBlockedAutoApprovalInput(entry)));
+}
+
+function getDeepInterviewInputLockMessage(): string {
+  return getLocalizedAutoNudgeCatalog().inputLockMessage;
+}
+
+function getDeepInterviewErrorPatterns(): string[] {
+  return getLocalizedAutoNudgeCatalog().errorPatterns;
+}
+
+function getDeepInterviewAbortPatterns(): string[] {
+  return getLocalizedAutoNudgeCatalog().abortPatterns;
+}
+
+function getDeepInterviewAbortInputs(): Set<string> {
+  return new Set(getLocalizedAutoNudgeCatalog().abortInputs.map((entry) => normalizeBlockedAutoApprovalInput(entry)));
+}
+
+function getDefaultStallPatterns(): string[] {
+  return getLocalizedAutoNudgeCatalog().stallPatterns;
+}
+
+function buildSemanticStallPromptPatterns(): RegExp[] {
+  return getLocalizedAutoNudgeCatalog().semanticStallPrompts.map((pattern) => {
+    const localized = buildLocalizedKeywordPattern(pattern);
+    return new RegExp(localized.source, 'giu');
+  });
+}
 
 function normalizeSkillPhase(phase) {
   const normalized = safeString(phase).toLowerCase().trim();
@@ -55,8 +88,8 @@ function normalizeInputLock(raw) {
     released_at: safeString(raw.released_at),
     blocked_inputs: Array.isArray(raw.blocked_inputs)
       ? raw.blocked_inputs.map((value) => safeString(value).toLowerCase()).filter(Boolean)
-      : [...DEEP_INTERVIEW_BLOCKED_APPROVAL_INPUTS],
-    message: safeString(raw.message) || DEEP_INTERVIEW_INPUT_LOCK_MESSAGE,
+      : getDeepInterviewBlockedApprovalInputs(),
+    message: safeString(raw.message) || getDeepInterviewInputLockMessage(),
     exit_reason: safeString(raw.exit_reason),
   };
 }
@@ -65,7 +98,7 @@ export function normalizeBlockedAutoApprovalInput(text) {
   return safeString(text)
     .toLowerCase()
     .replace(/\[omx_tmux_inject\]/gi, '')
-    .replace(/[^a-z]+/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 }
 
@@ -73,7 +106,7 @@ function buildBlockedAutoApprovalMatcher(blockedInputs) {
   const normalizedBlockedInputs = blockedInputs.map((entry) => normalizeBlockedAutoApprovalInput(entry)).filter(Boolean);
   return {
     exactMatches: new Set(normalizedBlockedInputs),
-    prefixedMatches: normalizedBlockedInputs.filter((entry) => DEEP_INTERVIEW_BLOCKED_APPROVAL_PREFIXES.has(entry)),
+    prefixedMatches: normalizedBlockedInputs.filter((entry) => getDeepInterviewBlockedApprovalPrefixes().has(entry)),
     blockedTokenSet: new Set(normalizedBlockedInputs.flatMap((entry) => entry.split(/\s+/).filter(Boolean))),
   };
 }
@@ -91,7 +124,7 @@ export function isBlockedAutoApprovalInput(text, blockedInputs = DEEP_INTERVIEW_
 }
 
 function isDeepInterviewAbortInput(text) {
-  return DEEP_INTERVIEW_ABORT_INPUTS.has(normalizeBlockedAutoApprovalInput(text));
+  return getDeepInterviewAbortInputs().has(normalizeBlockedAutoApprovalInput(text));
 }
 
 function hasAnySubstring(text, patterns) {
@@ -113,10 +146,10 @@ export function inferDeepInterviewReleaseReason({ skillState, latestUserInput = 
   if (!isDeepInterviewAutoApprovalLocked(skillState)) {
     return null;
   }
-  if (isDeepInterviewAbortInput(latestUserInput) || hasAnySubstring(lastMessage, DEEP_INTERVIEW_ABORT_PATTERNS)) {
+  if (isDeepInterviewAbortInput(latestUserInput) || hasAnySubstring(lastMessage, getDeepInterviewAbortPatterns())) {
     return 'abort';
   }
-  if (hasAnySubstring(` ${safeString(lastMessage).toLowerCase()}`, DEEP_INTERVIEW_ERROR_PATTERNS)) {
+  if (hasAnySubstring(` ${safeString(lastMessage).toLowerCase()}`, getDeepInterviewErrorPatterns())) {
     return 'error';
   }
   if (skillState.phase === 'completing') {
@@ -239,17 +272,6 @@ export const DEFAULT_STALL_PATTERNS = [
   'i\'ll continue from',
 ];
 
-const SEMANTIC_STALL_PROMPT_PATTERNS = [
-  /\bcontinue (?:with|on)\b/g,
-  /\bpick up with\b/g,
-  /\bkeep going\b/g,
-  /\band i'?ll continue\b/g,
-  /\bkeep (?:driving|pushing)\b/g,
-  /\bmove forward\b/g,
-  /\bdrive forward\b/g,
-  /\bi'?ll continue from\b/g,
-];
-
 const PLANNING_ONLY_STALL_PATTERNS = [
   'plan',
   'planning',
@@ -286,6 +308,10 @@ const PERMISSION_SEEKING_STALL_PATTERNS = [
   'proceed from here',
 ];
 
+function getPermissionSeekingStallPatterns(): string[] {
+  return [...PERMISSION_SEEKING_STALL_PATTERNS, ...getLocalizedAutoNudgeCatalog().permissionSeekingStallPatterns];
+}
+
 function normalizeStallDetectionText(text) {
   return stripOrchestrationIntentTags(safeString(text))
     .replace(/\r\n?/g, '\n')
@@ -298,15 +324,15 @@ function normalizeStallDetectionText(text) {
 
 export function normalizeAutoNudgeSignatureText(text) {
   const normalized = normalizeStallDetectionText(text)
-    .replace(/[^\w\s']/g, ' ')
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   if (!normalized) return '';
 
-  if (detectStallPattern(normalized, DEFAULT_STALL_PATTERNS)) {
+  if (detectStallPattern(normalized, getDefaultStallPatterns())) {
     let semantic = normalized;
-    for (const pattern of SEMANTIC_STALL_PROMPT_PATTERNS) {
+    for (const pattern of buildSemanticStallPromptPatterns()) {
       semantic = semantic.replace(pattern, ' proceed_intent ');
     }
     semantic = semantic
@@ -323,11 +349,17 @@ function normalizePatternList(patterns) {
   return patterns.map((pattern) => normalizeStallDetectionText(pattern)).filter(Boolean);
 }
 
+function normalizeConfigPatternList(value) {
+  return Array.isArray(value) && value.length > 0
+    ? value.filter(p => typeof p === 'string' && p.trim() !== '')
+    : [];
+}
+
 function usesDefaultStallPatterns(patterns) {
   const normalizedPatterns = normalizePatternList(patterns);
-  const normalizedDefaults = normalizePatternList(DEFAULT_STALL_PATTERNS);
-  return normalizedPatterns.length === normalizedDefaults.length
-    && normalizedPatterns.every((pattern, index) => pattern === normalizedDefaults[index]);
+  const defaultSets = [DEFAULT_STALL_PATTERNS, getDefaultStallPatterns()].map((defaults) => normalizePatternList(defaults));
+  return defaultSets.some((normalizedDefaults) => normalizedPatterns.length === normalizedDefaults.length
+    && normalizedPatterns.every((pattern, index) => pattern === normalizedDefaults[index]));
 }
 
 function matchesNormalizedPatterns(normalizedText, normalizedPatterns) {
@@ -344,7 +376,7 @@ function looksLikePlanningOnlyContinuation(normalizedText) {
 }
 
 function looksLikePermissionSeekingContinuation(normalizedText) {
-  return matchesNormalizedPatterns(normalizedText, normalizePatternList(PERMISSION_SEEKING_STALL_PATTERNS));
+  return matchesNormalizedPatterns(normalizedText, normalizePatternList(getPermissionSeekingStallPatterns()));
 }
 
 function summarizePaneCaptureForLog(captured, maxLines = 6) {
@@ -361,7 +393,8 @@ export function normalizeAutoNudgeConfig(raw) {
   if (!raw || typeof raw !== 'object') {
     return {
       enabled: true,
-      patterns: DEFAULT_STALL_PATTERNS,
+      patterns: getDefaultStallPatterns(),
+      forcePatterns: [],
       response: 'yes, proceed',
       delaySec: 3,
       stallMs: 5000,
@@ -372,7 +405,8 @@ export function normalizeAutoNudgeConfig(raw) {
     enabled: raw.enabled !== false,
     patterns: Array.isArray(raw.patterns) && raw.patterns.length > 0
       ? raw.patterns.filter(p => typeof p === 'string' && p.trim() !== '')
-      : DEFAULT_STALL_PATTERNS,
+      : getDefaultStallPatterns(),
+    forcePatterns: normalizeConfigPatternList(raw.forcePatterns),
     response: typeof raw.response === 'string' && raw.response.trim() !== ''
       ? raw.response
       : 'yes, proceed',
@@ -393,7 +427,7 @@ export function normalizeAutoNudgeConfig(raw) {
 export function resolveEffectiveAutoNudgeResponse(response) {
   const normalized = safeString(response).trim();
   if (!normalized) return DEFAULT_AUTO_NUDGE_RESPONSE;
-  return isBlockedAutoApprovalInput(normalized) ? DEFAULT_AUTO_NUDGE_RESPONSE : normalized;
+  return isBlockedAutoApprovalInput(normalized, getDeepInterviewBlockedApprovalInputs()) ? DEFAULT_AUTO_NUDGE_RESPONSE : normalized;
 }
 
 export async function loadAutoNudgeConfig() {
@@ -421,6 +455,12 @@ export function detectStallPattern(text, patterns, currentPhase = '') {
   if (looksLikePermissionSeekingContinuation(normalized)) return false;
   if (safeString(currentPhase).trim().toLowerCase() === 'planning') return false;
   return !looksLikePlanningOnlyContinuation(normalized);
+}
+
+export function detectConfiguredAutoNudgeStall(text, config, currentPhase = '') {
+  const forcePatterns = Array.isArray(config?.forcePatterns) ? config.forcePatterns : [];
+  if (detectStallPattern(text, forcePatterns)) return true;
+  return detectStallPattern(text, config?.patterns ?? getDefaultStallPatterns(), currentPhase);
 }
 
 export async function capturePane(paneId, lines = 10) {
@@ -510,13 +550,13 @@ export async function maybeAutoNudge({ cwd, stateDir, logsDir, payload }) {
     }
     const paneId = await resolveNudgePaneTarget(stateDir, cwd, payload);
 
-    let detected = detectStallPattern(lastMessage, config.patterns, skillState?.phase);
+    let detected = detectConfiguredAutoNudgeStall(lastMessage, config, skillState?.phase);
     let source = 'payload';
     let captured = '';
 
     if (!detected && paneId) {
       captured = await capturePane(paneId);
-      detected = detectStallPattern(captured, config.patterns, skillState?.phase);
+      detected = detectConfiguredAutoNudgeStall(captured, config, skillState?.phase);
       source = 'capture-pane';
     }
 
@@ -592,7 +632,7 @@ export async function maybeAutoNudge({ cwd, stateDir, logsDir, payload }) {
 
     const deepInterviewLockActive = isDeepInterviewAutoApprovalLocked(skillState) && !releaseReason;
     if (deepInterviewLockActive) {
-      const blockedMessage = skillState.input_lock?.message || DEEP_INTERVIEW_INPUT_LOCK_MESSAGE;
+      const localizedBlockedMessage = skillState.input_lock?.message || getDeepInterviewInputLockMessage();
       await logTmuxHookEvent(logsDir, {
         timestamp: new Date().toISOString(),
         type: 'auto_nudge_blocked',
@@ -603,7 +643,7 @@ export async function maybeAutoNudge({ cwd, stateDir, logsDir, payload }) {
         block_kind: isBlockedAutoApprovalInput(effectiveResponse, skillState.input_lock?.blocked_inputs)
           ? 'blocked-auto-approval'
           : 'input-lock-active',
-        message: blockedMessage,
+        message: localizedBlockedMessage,
         suppressed: true,
       }).catch(() => {});
       return;

@@ -16,7 +16,9 @@ import { dirname, join } from 'node:path';
 import { classifyTaskSize, isHeavyMode, type TaskSizeResult, type TaskSizeThresholds } from './task-size-detector.js';
 import { isApprovedExecutionFollowupShortcut, type FollowupMode } from '../team/followup-planner.js';
 import { isPlanningComplete, readPlanningArtifacts } from '../planning/artifacts.js';
-import { KEYWORD_TRIGGER_DEFINITIONS, compareKeywordMatches } from './keyword-registry.js';
+import { KEYWORD_TRIGGER_DEFINITIONS, compareKeywordMatches, getRuntimeKeywordTriggerDefinitions } from './keyword-registry.js';
+import { buildLocalizedKeywordPattern, buildLocalizedKeywordPatternSource } from '../localization/matcher.js';
+import { getLocalizedAutoNudgeCatalog, getLocalizedTeamIntentCatalog } from '../localization/runtime.js';
 import {
   SKILL_ACTIVE_STATE_FILE,
   listActiveSkills,
@@ -88,6 +90,14 @@ export const DEEP_INTERVIEW_STATE_FILE = 'deep-interview-state.json';
 export const DEEP_INTERVIEW_BLOCKED_APPROVAL_INPUTS = ['yes', 'y', 'proceed', 'continue', 'ok', 'sure', 'go ahead', 'next i should'] as const;
 export const DEEP_INTERVIEW_INPUT_LOCK_MESSAGE = 'Deep interview is active; auto-approval shortcuts are blocked until the interview finishes.';
 
+function getDeepInterviewBlockedApprovalInputs(): string[] {
+  return getLocalizedAutoNudgeCatalog().blockedApprovals;
+}
+
+function getDeepInterviewInputLockMessage(): string {
+  return getLocalizedAutoNudgeCatalog().inputLockMessage;
+}
+
 type StatefulSkillMode = 'deep-interview' | 'autopilot' | 'ralph' | 'ralplan' | 'ultrawork' | 'ultraqa' | 'team';
 
 interface StatefulSkillSeedConfig {
@@ -125,8 +135,8 @@ function createDeepInterviewInputLock(nowIso: string, previous?: DeepInterviewIn
     active: true,
     scope: 'deep-interview-auto-approval',
     acquired_at: previous?.active ? previous.acquired_at : nowIso,
-    blocked_inputs: [...DEEP_INTERVIEW_BLOCKED_APPROVAL_INPUTS],
-    message: DEEP_INTERVIEW_INPUT_LOCK_MESSAGE,
+    blocked_inputs: getDeepInterviewBlockedApprovalInputs(),
+    message: getDeepInterviewInputLockMessage(),
   };
 }
 
@@ -315,45 +325,48 @@ async function persistStatefulSkillSeedState(
   };
 }
 
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function isWordChar(ch: string | undefined): boolean {
-  return Boolean(ch && /[A-Za-z0-9_]/.test(ch));
-}
-
 function keywordToPattern(keyword: string): RegExp {
-  const escaped = escapeRegex(keyword);
-  const startsWithWord = isWordChar(keyword[0]);
-  const endsWithWord = isWordChar(keyword[keyword.length - 1]);
-  const prefix = startsWithWord ? '\\b' : '';
-  const suffix = endsWithWord ? '\\b' : '';
-  return new RegExp(`${prefix}${escaped}${suffix}`, 'i');
+  return buildLocalizedKeywordPattern(keyword);
 }
 
-const KEYWORD_MAP: Array<{ pattern: RegExp; skill: string; priority: number }> = KEYWORD_TRIGGER_DEFINITIONS.map((entry) => ({
-  pattern: keywordToPattern(entry.keyword),
-  skill: entry.skill,
-  priority: entry.priority,
-}));
+function getKeywordMap(): Array<{ pattern: RegExp; skill: string; priority: number }> {
+  return getRuntimeKeywordTriggerDefinitions().map((entry) => ({
+    pattern: keywordToPattern(entry.keyword),
+    skill: entry.skill,
+    priority: entry.priority,
+  }));
+}
 
 const KEYWORDS_REQUIRING_INTENT = new Set(['team', 'swarm']);
 
-const TEAM_SWARM_INTENT_PATTERNS: Record<'team' | 'swarm', RegExp[]> = {
-  team: [
-    /(?:^|[^\w])\$(?:team)\b/i,
-    /\/prompts:team\b/i,
-    /\b(?:use|run|start|enable|launch|invoke|activate|orchestrate|coordinate)\s+(?:a\s+|an\s+|the\s+)?team\b/i,
-    /\bteam\s+(?:mode|orchestration|workflow|agents?)\b/i,
-  ],
-  swarm: [
-    /(?:^|[^\w])\$(?:swarm)\b/i,
-    /\/prompts:swarm\b/i,
-    /\b(?:use|run|start|enable|launch|invoke|activate|orchestrate|coordinate)\s+(?:a\s+|an\s+|the\s+)?swarm\b/i,
-    /\bswarm\s+(?:mode|orchestration|workflow|agents?)\b/i,
-  ],
-};
+function buildVerbIntentPattern(keyword: 'team' | 'swarm'): RegExp {
+  const catalog = getLocalizedTeamIntentCatalog();
+  const verbs = catalog.actionVerbs.map((verb) => buildLocalizedKeywordPatternSource(verb)).join('|');
+  return new RegExp(`(?:${verbs})(?:\\s+[\\p{L}\\p{N}_-]+){0,3}\\s+${buildLocalizedKeywordPatternSource(keyword)}`, 'iu');
+}
+
+function buildKeywordContextPattern(keyword: 'team' | 'swarm'): RegExp {
+  const catalog = getLocalizedTeamIntentCatalog();
+  const suffixes = [...catalog.modeTerms, ...catalog.workflowTerms].map((suffix) => buildLocalizedKeywordPatternSource(suffix)).join('|');
+  return new RegExp(`${buildLocalizedKeywordPatternSource(keyword)}\\s+(?:${suffixes})`, 'iu');
+}
+
+function getTeamSwarmIntentPatterns(): Record<'team' | 'swarm', RegExp[]> {
+  return {
+    team: [
+      /(?:^|[^\w])\$(?:team)\b/i,
+      /\/prompts:team\b/i,
+      buildVerbIntentPattern('team'),
+      buildKeywordContextPattern('team'),
+    ],
+    swarm: [
+      /(?:^|[^\w])\$(?:swarm)\b/i,
+      /\/prompts:swarm\b/i,
+      buildVerbIntentPattern('swarm'),
+      buildKeywordContextPattern('swarm'),
+    ],
+  };
+}
 
 function hasExplicitPromptsInvocation(text: string): boolean {
   return /(?:^|\s)\/prompts:[\w.-]+(?=[\s.,!?;:]|$)/i.test(text);
@@ -402,7 +415,7 @@ function extractExplicitSkillInvocations(text: string): KeywordMatch[] {
 function hasIntentContextForKeyword(text: string, keyword: string): boolean {
   if (!KEYWORDS_REQUIRING_INTENT.has(keyword.toLowerCase())) return true;
   const k = keyword.toLowerCase() as 'team' | 'swarm';
-  return TEAM_SWARM_INTENT_PATTERNS[k].some((pattern) => pattern.test(text));
+  return getTeamSwarmIntentPatterns()[k].some((pattern) => pattern.test(text));
 }
 
 /**
@@ -424,7 +437,7 @@ export function detectKeywords(text: string): KeywordMatch[] {
 
   const implicit: KeywordMatch[] = [];
 
-  for (const { pattern, skill, priority } of KEYWORD_MAP) {
+  for (const { pattern, skill, priority } of getKeywordMap()) {
     const match = text.match(pattern);
     if (match) {
       if (!hasIntentContextForKeyword(text, match[0].toLowerCase())) continue;

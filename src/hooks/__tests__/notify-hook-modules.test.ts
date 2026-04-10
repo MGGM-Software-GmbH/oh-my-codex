@@ -228,6 +228,27 @@ describe('notify-hook/operational-events – deriveAssistantSignalEvents', () =>
       false,
     );
   });
+
+  it('does not derive handoff/retry signals from word substrings', async () => {
+    const { deriveAssistantSignalEvents } = await loadModule('notify-hook/operational-events.js');
+    const signals = deriveAssistantSignalEvents('The retryable worker handoffs field is metadata, not an actionable request.');
+    assert.equal(signals.some((signal: { event?: string }) => signal.event === 'handoff-needed'), false);
+    assert.equal(signals.some((signal: { event?: string }) => signal.event === 'retry-needed'), false);
+  });
+
+  it('detects German handoff and retry phrases when OMX_LOCALE=de', async () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      const { deriveAssistantSignalEvents } = await loadModule('notify-hook/operational-events.js');
+      const signals = deriveAssistantSignalEvents('Wenn du möchtest kann ich als nächstes die Übergabe machen oder es erneut versuchen.');
+      assert.equal(signals.some((signal: { event?: string }) => signal.event === 'handoff-needed'), true);
+      assert.equal(signals.some((signal: { event?: string }) => signal.event === 'retry-needed'), true);
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -238,6 +259,21 @@ describe('notify-hook/auto-nudge – detectStallPattern', () => {
     const { detectStallPattern, DEFAULT_STALL_PATTERNS } = await loadModule('notify-hook/auto-nudge.js');
     assert.equal(detectStallPattern('KEEP GOING and I will finish the patch.', DEFAULT_STALL_PATTERNS), true);
     assert.equal(detectStallPattern('Continue with the existing cleanup from here.', DEFAULT_STALL_PATTERNS), true);
+  });
+
+  it('detects German stall patterns when OMX_LOCALE=de', async () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      const { detectStallPattern } = await loadModule('notify-hook/auto-nudge.js');
+      assert.equal(detectStallPattern('Möchtest du, dass ich fortfahre?', ['möchtest du']), true);
+      assert.equal(detectStallPattern('Wenn du möchtest, kann ich als Nächstes refaktorieren.', ['wenn du möchtest']), true);
+      assert.equal(detectStallPattern('Wenn du willst, kann ich als Nächstes refaktorieren.', ['wenn du willst']), true);
+      assert.equal(detectStallPattern('Soll ich weitermachen?', ['soll ich']), true);
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
   });
 
   it('detects team-worker continuation phrases like continue with and keep going', async () => {
@@ -253,6 +289,22 @@ describe('notify-hook/auto-nudge – detectStallPattern', () => {
     assert.equal(detectStallPattern('If you want, I can refactor.', DEFAULT_STALL_PATTERNS), false);
     assert.equal(detectStallPattern('Ready to proceed whenever you are.', DEFAULT_STALL_PATTERNS), false);
     assert.equal(detectStallPattern('I can continue with the plan from here.', DEFAULT_STALL_PATTERNS), false);
+  });
+
+  it('does not treat localized German permission prompts as default auto-nudge stalls', async () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      const { detectStallPattern, normalizeAutoNudgeConfig } = await loadModule('notify-hook/auto-nudge.js');
+      const localizedDefaults = normalizeAutoNudgeConfig(null).patterns;
+      assert.equal(detectStallPattern('Wenn du möchtest, kann ich als Nächstes refaktorieren.', localizedDefaults), false);
+      assert.equal(detectStallPattern('Wenn du willst, kann ich als Nächstes refaktorieren.', localizedDefaults), false);
+      assert.equal(detectStallPattern('Möchtest du, dass ich fortfahre?', localizedDefaults), false);
+      assert.equal(detectStallPattern('Soll ich weitermachen?', localizedDefaults), false);
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
   });
 
   it('returns false when no stall pattern present', async () => {
@@ -307,6 +359,7 @@ describe('notify-hook/auto-nudge – normalizeAutoNudgeConfig', () => {
     const cfg = normalizeAutoNudgeConfig(null);
     assert.equal(cfg.enabled, true);
     assert.deepEqual(cfg.patterns, DEFAULT_STALL_PATTERNS);
+    assert.deepEqual(cfg.forcePatterns, []);
     assert.equal(cfg.response, 'yes, proceed');
     assert.equal(cfg.delaySec, 3);
     assert.equal(cfg.ttlMs, 30_000);
@@ -348,11 +401,30 @@ describe('notify-hook/auto-nudge – normalizeAutoNudgeConfig', () => {
     assert.deepEqual(cfg.patterns, ['awaiting input', 'ping me']);
   });
 
+  it('accepts forcePatterns array and filters empty entries', async () => {
+    const { normalizeAutoNudgeConfig } = await loadModule('notify-hook/auto-nudge.js');
+    const cfg = normalizeAutoNudgeConfig({ forcePatterns: ['wenn du willst', ' ', 'möchtest du'] });
+    assert.deepEqual(cfg.forcePatterns, ['wenn du willst', 'möchtest du']);
+  });
+
   it('filters empty strings from patterns', async () => {
     const { normalizeAutoNudgeConfig, DEFAULT_STALL_PATTERNS } = await loadModule('notify-hook/auto-nudge.js');
     // Empty array → fall back to defaults
     const cfg = normalizeAutoNudgeConfig({ patterns: [] });
     assert.deepEqual(cfg.patterns, DEFAULT_STALL_PATTERNS);
+  });
+});
+
+describe('notify-hook/auto-nudge – detectConfiguredAutoNudgeStall', () => {
+  it('lets forcePatterns bypass default permission/planning suppression', async () => {
+    const { detectConfiguredAutoNudgeStall, normalizeAutoNudgeConfig } = await loadModule('notify-hook/auto-nudge.js');
+    const baseConfig = normalizeAutoNudgeConfig(null);
+    const forceConfig = normalizeAutoNudgeConfig({ forcePatterns: ['wenn du willst', 'continue with'] });
+
+    assert.equal(detectConfiguredAutoNudgeStall('Wenn du willst, kann ich als Nächstes refaktorieren.', baseConfig), false);
+    assert.equal(detectConfiguredAutoNudgeStall('Wenn du willst, kann ich als Nächstes refaktorieren.', forceConfig), true);
+    assert.equal(detectConfiguredAutoNudgeStall('I can continue with the plan from here.', baseConfig, 'planning'), false);
+    assert.equal(detectConfiguredAutoNudgeStall('I can continue with the plan from here.', forceConfig, 'planning'), true);
   });
 });
 
@@ -362,6 +434,20 @@ describe('notify-hook/auto-nudge – resolveEffectiveAutoNudgeResponse', () => {
     assert.equal(resolveEffectiveAutoNudgeResponse('yes, proceed'), DEFAULT_AUTO_NUDGE_RESPONSE);
     assert.equal(resolveEffectiveAutoNudgeResponse('continue'), DEFAULT_AUTO_NUDGE_RESPONSE);
     assert.equal(resolveEffectiveAutoNudgeResponse('custom follow-up'), 'custom follow-up');
+  });
+
+  it('maps localized approval-style responses to a non-authorizing continuation message', async () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      const { DEFAULT_AUTO_NUDGE_RESPONSE, resolveEffectiveAutoNudgeResponse } = await loadModule('notify-hook/auto-nudge.js');
+      assert.equal(resolveEffectiveAutoNudgeResponse('ja'), DEFAULT_AUTO_NUDGE_RESPONSE);
+      assert.equal(resolveEffectiveAutoNudgeResponse('mach weiter'), DEFAULT_AUTO_NUDGE_RESPONSE);
+      assert.equal(resolveEffectiveAutoNudgeResponse('benutzerdefinierte fortsetzung'), 'benutzerdefinierte fortsetzung');
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
   });
 });
 
@@ -417,6 +503,20 @@ describe('notify-hook/auto-nudge – blocked deep-interview auto approvals', () 
     const { isBlockedAutoApprovalInput, DEEP_INTERVIEW_BLOCKED_APPROVAL_INPUTS } = await loadModule('notify-hook/auto-nudge.js');
     for (const blocked of DEEP_INTERVIEW_BLOCKED_APPROVAL_INPUTS) {
       assert.equal(isBlockedAutoApprovalInput(blocked), true, `expected blocked input ${blocked} to match`);
+    }
+  });
+
+  it('matches localized German auto-approval phrases when OMX_LOCALE=de', async () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      const { isBlockedAutoApprovalInput } = await loadModule('notify-hook/auto-nudge.js');
+      assert.equal(isBlockedAutoApprovalInput('ja', ['ja', 'weiter']), true);
+      assert.equal(isBlockedAutoApprovalInput('weiter', ['ja', 'weiter']), true);
+      assert.equal(isBlockedAutoApprovalInput('Als nächstes sollte ich die Tests anpassen.', ['als nächstes sollte ich']), true);
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
     }
   });
 

@@ -3,6 +3,7 @@
  */
 
 import { asNumber, safeString, clampPct } from './utils.js';
+import { getLocalizedAutoNudgeCatalog } from '../../localization/runtime.js';
 
 export const LANGUAGE_REMINDER_MARKER = '[OMX_LANG_REMINDER]';
 export const LANGUAGE_REMINDER_TEXT = `${LANGUAGE_REMINDER_MARKER} User input includes non-Latin script. Continue in the user's language.`;
@@ -139,5 +140,5 @@ export function injectLanguageReminder(prompt: any, sourceText: any): string {
   const basePrompt = safeString(prompt);
   if (!hasNonLatinScript(sourceText)) return basePrompt;
   if (basePrompt.includes(LANGUAGE_REMINDER_MARKER)) return basePrompt;
-  return `${basePrompt}\n${LANGUAGE_REMINDER_TEXT}`;
+  return `${basePrompt}\n${getLocalizedAutoNudgeCatalog().languageReminderText}`;
 }

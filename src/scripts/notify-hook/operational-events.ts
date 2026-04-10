@@ -1,6 +1,7 @@
 import { execFileSync } from 'child_process';
 import { basename, dirname } from 'path';
 import { safeString } from './utils.js';
+import { getLocalizedAutoNudgeCatalog } from '../../localization/runtime.js';
 import { upsertCurrentTaskBaseline } from '../../team/current-task-baseline.js';
 
 const TEST_SEGMENT_PATTERNS = [
@@ -18,20 +19,26 @@ const TEST_SEGMENT_PATTERNS = [
 
 const PR_CREATE_SEGMENT_RE = /^gh\s+pr\s+create\b/i;
 const SEARCH_SEGMENT_RE = /^(?:rg|grep|ag|ack|find|sed|awk|cat|printf|echo)\b/i;
-const HANDOFF_PATTERNS = [
-  /\bhandoff\b/i,
-  /\bhand off\b/i,
-  /\bnext i can do one of\b/i,
-  /\bif you want, next i can\b/i,
-  /\bchoose one of\b/i,
-  /\brecommended handoff\b/i,
-];
-const RETRY_PATTERNS = [
-  /\bretry\b/i,
-  /\brerun\b/i,
-  /\bre-run\b/i,
-  /\btry again\b/i,
-];
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasWordEdge(value: string): boolean {
+  return /[\p{L}\p{N}_]/u.test(value);
+}
+
+function buildLiteralPattern(value: string): RegExp {
+  const normalized = value.trim();
+  const escaped = escapeRegexLiteral(normalized);
+  const prefix = hasWordEdge(normalized[0] ?? '') ? '(?<![\\p{L}\\p{N}_])' : '';
+  const suffix = hasWordEdge(normalized.at(-1) ?? '') ? '(?![\\p{L}\\p{N}_])' : '';
+  return new RegExp(`${prefix}${escaped}${suffix}`, 'iu');
+}
+
+function buildLiteralPatterns(values: readonly string[]): RegExp[] {
+  return values.map(buildLiteralPattern);
+}
 
 function gitValue(cwd: any, args: string[]): string {
   try {
@@ -257,8 +264,9 @@ export function deriveAssistantSignalEvents(message: any): any[] {
   if (!text) return [];
 
   const signals: any[] = [];
-  const handoff = HANDOFF_PATTERNS.some((pattern) => pattern.test(text));
-  const retryNeeded = RETRY_PATTERNS.some((pattern) => pattern.test(text));
+  const localized = getLocalizedAutoNudgeCatalog();
+  const handoff = buildLiteralPatterns(localized.handoffPatterns).some((pattern) => pattern.test(text));
+  const retryNeeded = buildLiteralPatterns(localized.retryPatterns).some((pattern) => pattern.test(text));
 
   if (handoff) {
     signals.push({

@@ -196,6 +196,38 @@ describe('keyword detector swarm/team compatibility', () => {
     assert.equal(match.skill, 'deep-interview');
     assert.equal(match.keyword.toLowerCase(), 'deep interview');
   });
+
+  it('detects German localized workflow keywords when OMX_LOCALE=de', () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      assert.equal(detectPrimaryKeyword('lass uns planen')?.skill, 'plan');
+      assert.equal(detectPrimaryKeyword('bitte untersuche diesen Fehler')?.skill, 'analyze');
+      assert.equal(detectPrimaryKeyword('bitte prüfe den code')?.skill, 'code-review');
+      assert.equal(detectPrimaryKeyword('bitte verwende ein team für diese Aufgabe')?.skill, 'team');
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
+  });
+
+  it('keeps English keyword triggers active when non-Latin particles are attached', () => {
+    assert.equal(detectPrimaryKeyword('ralph로 계속 진행해줘')?.skill, 'ralph');
+    assert.equal(detectPrimaryKeyword('autopilotを使って進めて')?.skill, 'autopilot');
+    assert.equal(detectPrimaryKeyword('ralphx로 계속 진행해줘'), null);
+  });
+
+  it('detects localized Korean team intent around English team keywords when OMX_LOCALE=ko', () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'ko';
+    try {
+      assert.equal(detectPrimaryKeyword('사용 team')?.skill, 'team');
+      assert.equal(detectPrimaryKeyword('team 모드')?.skill, 'team');
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
+  });
 });
 
 describe('keyword registry coverage', () => {

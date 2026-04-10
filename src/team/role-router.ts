@@ -9,6 +9,8 @@ import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import type { TeamPhase } from './orchestrator.js';
+import { hasAnyLocalizedKeyword, startsWithAnyLocalizedKeyword } from '../localization/matcher.js';
+import { getLocalizedRoleRouterCatalog } from '../localization/runtime.js';
 
 // ─── Layer 1: Prompt Loading ────────────────────────────────────────────────
 
@@ -80,37 +82,31 @@ type LaneIntent =
  * Keyword-to-role mapping categories.
  * Order matters: first match wins within a category, but higher keyword count wins across categories.
  */
-const ROLE_KEYWORDS: ReadonlyArray<{ role: string; keywords: readonly string[] }> = [
-  { role: 'test-engineer', keywords: ['test', 'spec', 'coverage', 'tdd', 'jest', 'vitest', 'mocha', 'pytest', 'unit test', 'integration test', 'e2e', '테스트', '커버리지'] },
-  { role: 'designer', keywords: ['ui', 'component', 'layout', 'css', 'design', 'responsive', 'tailwind', 'react', 'frontend', 'styling', 'ux', '디자인', '레이아웃', '컴포넌트'] },
-  { role: 'build-fixer', keywords: ['build', 'compile', 'tsc', 'type error', 'typescript error', 'build error', 'compilation', '빌드', '컴파일', '타입 오류'] },
-  { role: 'debugger', keywords: ['debug', 'investigate', 'root cause', 'regression', 'stack trace', 'bisect', 'diagnose', '디버그', '조사', '원인'] },
-  { role: 'writer', keywords: ['doc', 'readme', 'migration guide', 'changelog', 'comment', 'documentation', 'api doc', '문서', '가이드', '변경로그'] },
-  { role: 'quality-reviewer', keywords: ['review', 'audit', 'quality', 'lint', 'anti-pattern', 'code review', '검토', '리뷰'] },
-  { role: 'security-reviewer', keywords: ['security', 'owasp', 'xss', 'injection', 'cve', 'vulnerability', '보안', '취약점'] },
-  { role: 'code-simplifier', keywords: ['refactor', 'simplify', 'clean up', 'reduce complexity', 'consolidate', '리팩터', '단순화'] },
-];
-
-const IMPLEMENTATION_INTENT = /\b(?:add|build|create|fix|implement|make|migrate|repair|ship|support|update|wire)\b|(?:구현|추가|수정|업데이트|지원)/i;
-const REVIEW_INTENT = /\b(?:audit|check|inspect|review|validate|verify)\b|(?:검토|리뷰|감사|확인|검증)/i;
-const PRIMARY_TEST_INTENT = /^(?:add|create|expand|improve|increase|write)\b.*\b(?:tests?|specs?|coverage)\b|^(?:테스트\s*(?:추가|작성)|커버리지\s*추가)/i;
-const DOCS_INTENT = /\b(?:docs?|documentation|readme|guide|changelog)\b|(?:문서|가이드|README|변경로그)/i;
-const PRIMARY_DOCS_INTENT = /^(?:document|draft|write|update)\b.*\b(?:docs?|documentation|readme|guide|changelog)\b|^(?:문서\s*(?:업데이트|작성)|README\s*업데이트|가이드\s*작성)/i;
-const DEBUG_INTENT = /\b(?:debug|diagnose|investigate|root cause|trace|bisect)\b|(?:디버그|조사|원인)/i;
-const DESIGN_INTENT = /\b(?:design|layout|style)\b|\b(?:build|create)\b.*\b(?:ui|component|frontend)\b|(?:디자인|레이아웃|스타일|컴포넌트)/i;
-const BUILD_FIX_INTENT = /\b(?:build|compile|tsc|type error|compilation)\b|(?:빌드|컴파일|타입 오류)/i;
-const CLEANUP_INTENT = /\b(?:clean up|consolidate|reduce complexity|refactor|simplify)\b|(?:정리|단순화|리팩터)/i;
-const SECURITY_DOMAIN = /\b(?:auth|authentication|authorization|cve|injection|owasp|security|vulnerability|xss)\b|(?:보안|인증|인가|취약점)/i;
-
 function inferLaneIntent(text: string): LaneIntent {
-  if (BUILD_FIX_INTENT.test(text) && /\b(?:fix|resolve|repair)\b|(?:수정|해결)/i.test(text)) return 'build-fix';
-  if (DEBUG_INTENT.test(text)) return 'debug';
-  if (REVIEW_INTENT.test(text)) return 'review';
-  if (PRIMARY_TEST_INTENT.test(text)) return 'verification';
-  if (PRIMARY_DOCS_INTENT.test(text) || DOCS_INTENT.test(text)) return 'docs';
-  if (DESIGN_INTENT.test(text)) return 'design';
-  if (CLEANUP_INTENT.test(text)) return 'cleanup';
-  if (IMPLEMENTATION_INTENT.test(text)) return 'implementation';
+  const localized = getLocalizedRoleRouterCatalog();
+  if (
+    hasAnyLocalizedKeyword(text, localized.buildFixIntent)
+    && hasAnyLocalizedKeyword(text, localized.buildFixRepairIntent)
+  ) return 'build-fix';
+  if (hasAnyLocalizedKeyword(text, localized.debugIntent)) return 'debug';
+  if (hasAnyLocalizedKeyword(text, localized.reviewIntent)) return 'review';
+  if (
+    startsWithAnyLocalizedKeyword(text, localized.primaryTestIntentPrefixes)
+    && hasAnyLocalizedKeyword(text, localized.testIntentTargets)
+  ) return 'verification';
+  if (
+    (startsWithAnyLocalizedKeyword(text, localized.primaryDocsIntentPrefixes) && hasAnyLocalizedKeyword(text, localized.docsIntentTargets))
+    || hasAnyLocalizedKeyword(text, localized.docsIntentTargets)
+  ) return 'docs';
+  if (
+    hasAnyLocalizedKeyword(text, localized.designIntent)
+    || (
+      hasAnyLocalizedKeyword(text, ['build', 'create', 'baue', 'erstelle', '빌드'])
+      && hasAnyLocalizedKeyword(text, ['ui', 'component', 'frontend', 'komponente', '컴포넌트'])
+    )
+  ) return 'design';
+  if (hasAnyLocalizedKeyword(text, localized.cleanupIntent)) return 'cleanup';
+  if (hasAnyLocalizedKeyword(text, localized.implementationIntent)) return 'implementation';
   return 'unknown';
 }
 
@@ -137,6 +133,7 @@ export function routeTaskToRole(
   fallbackRole: string,
 ): RoleRouterResult {
   const text = `${taskSubject} ${taskDescription}`.toLowerCase();
+  const localized = getLocalizedRoleRouterCatalog();
   const intent = inferLaneIntent(text);
 
   if (intent === 'build-fix') {
@@ -181,9 +178,9 @@ export function routeTaskToRole(
 
   if (intent === 'review') {
     return {
-      role: SECURITY_DOMAIN.test(text) ? 'security-reviewer' : 'quality-reviewer',
+      role: hasAnyLocalizedKeyword(text, localized.securityDomain) ? 'security-reviewer' : 'quality-reviewer',
       confidence: 'high',
-      reason: SECURITY_DOMAIN.test(text)
+      reason: hasAnyLocalizedKeyword(text, localized.securityDomain)
         ? 'primary intent is security-focused review'
         : 'primary intent is review/verification',
     };
@@ -197,7 +194,7 @@ export function routeTaskToRole(
     };
   }
 
-  if (intent === 'implementation' && SECURITY_DOMAIN.test(text)) {
+  if (intent === 'implementation' && hasAnyLocalizedKeyword(text, localized.securityDomain)) {
     return {
       role: fallbackRole,
       confidence: 'medium',
@@ -210,11 +207,11 @@ export function routeTaskToRole(
   let bestCount = 0;
   let bestKeyword = '';
 
-  for (const { role, keywords } of ROLE_KEYWORDS) {
+  for (const [role, keywords] of Object.entries(localized.roleKeywords)) {
     let count = 0;
     let matchedKeyword = '';
     for (const kw of keywords) {
-      if (text.includes(kw)) {
+      if (hasAnyLocalizedKeyword(text, [kw])) {
         count++;
         if (!matchedKeyword) matchedKeyword = kw;
       }
