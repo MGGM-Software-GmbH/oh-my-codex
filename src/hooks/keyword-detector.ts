@@ -17,7 +17,7 @@ import { classifyTaskSize, isHeavyMode, type TaskSizeResult, type TaskSizeThresh
 import { isApprovedExecutionFollowupShortcut, type FollowupMode } from '../team/followup-planner.js';
 import { isPlanningComplete, readPlanningArtifacts } from '../planning/artifacts.js';
 import { KEYWORD_TRIGGER_DEFINITIONS, compareKeywordMatches, getRuntimeKeywordTriggerDefinitions } from './keyword-registry.js';
-import { buildLocalizedKeywordPattern } from '../localization/matcher.js';
+import { buildLocalizedKeywordPattern, buildLocalizedKeywordPatternSource } from '../localization/matcher.js';
 import { getLocalizedAutoNudgeCatalog, getLocalizedTeamIntentCatalog } from '../localization/runtime.js';
 import {
   SKILL_ACTIVE_STATE_FILE,
@@ -339,20 +339,16 @@ function getKeywordMap(): Array<{ pattern: RegExp; skill: string; priority: numb
 
 const KEYWORDS_REQUIRING_INTENT = new Set(['team', 'swarm']);
 
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function buildVerbIntentPattern(keyword: 'team' | 'swarm'): RegExp {
   const catalog = getLocalizedTeamIntentCatalog();
-  const verbs = catalog.actionVerbs.map(escapeRegex).join('|');
-  return new RegExp(`\\b(?:${verbs})\\b(?:\\s+[\\p{L}\\p{N}_-]+){0,3}\\s+${keyword}\\b`, 'iu');
+  const verbs = catalog.actionVerbs.map((verb) => buildLocalizedKeywordPatternSource(verb)).join('|');
+  return new RegExp(`(?:${verbs})(?:\\s+[\\p{L}\\p{N}_-]+){0,3}\\s+${buildLocalizedKeywordPatternSource(keyword)}`, 'iu');
 }
 
 function buildKeywordContextPattern(keyword: 'team' | 'swarm'): RegExp {
   const catalog = getLocalizedTeamIntentCatalog();
-  const suffixes = [...catalog.modeTerms, ...catalog.workflowTerms].map(escapeRegex).join('|');
-  return new RegExp(`\\b${keyword}\\s+(?:${suffixes})\\b`, 'iu');
+  const suffixes = [...catalog.modeTerms, ...catalog.workflowTerms].map((suffix) => buildLocalizedKeywordPatternSource(suffix)).join('|');
+  return new RegExp(`${buildLocalizedKeywordPatternSource(keyword)}\\s+(?:${suffixes})`, 'iu');
 }
 
 function getTeamSwarmIntentPatterns(): Record<'team' | 'swarm', RegExp[]> {

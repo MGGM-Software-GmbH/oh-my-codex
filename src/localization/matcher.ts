@@ -6,13 +6,26 @@ function isWordChar(char: string | undefined): boolean {
   return typeof char === 'string' && /[\p{L}\p{N}_]/u.test(char);
 }
 
-export function buildLocalizedKeywordPattern(keyword: string, { anchored = false }: { anchored?: boolean } = {}): RegExp {
-  const escaped = escapeRegex(keyword.trim());
-  const startsWithWord = isWordChar(keyword.trim()[0]);
-  const endsWithWord = isWordChar(keyword.trim().at(-1));
-  const prefix = anchored ? '^' : startsWithWord ? '(?<![\\p{L}\\p{N}_])' : '';
-  const suffix = endsWithWord ? '(?![\\p{L}\\p{N}_])' : '';
-  return new RegExp(`${prefix}${escaped}${suffix}`, 'iu');
+function isAsciiWordChar(char: string | undefined): boolean {
+  return typeof char === 'string' && /[A-Za-z0-9_]/.test(char);
+}
+
+function wordBoundaryClassFor(char: string | undefined): string {
+  return isAsciiWordChar(char) ? 'A-Za-z0-9_' : '\\p{L}\\p{N}_';
+}
+
+export function buildLocalizedKeywordPatternSource(keyword: string, { anchored = false }: { anchored?: boolean } = {}): string {
+  const normalized = keyword.trim();
+  const escaped = escapeRegex(normalized);
+  const startsWithWord = isWordChar(normalized[0]);
+  const endsWithWord = isWordChar(normalized.at(-1));
+  const prefix = anchored ? '^' : startsWithWord ? `(?<![${wordBoundaryClassFor(normalized[0])}])` : '';
+  const suffix = endsWithWord ? `(?![${wordBoundaryClassFor(normalized.at(-1))}])` : '';
+  return `${prefix}${escaped}${suffix}`;
+}
+
+export function buildLocalizedKeywordPattern(keyword: string, options: { anchored?: boolean } = {}): RegExp {
+  return new RegExp(buildLocalizedKeywordPatternSource(keyword, options), 'iu');
 }
 
 export function matchesLocalizedKeyword(text: string, keyword: string): boolean {
