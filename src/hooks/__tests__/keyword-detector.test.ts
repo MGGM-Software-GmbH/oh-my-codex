@@ -195,6 +195,20 @@ describe('keyword detector swarm/team compatibility', () => {
     assert.equal(match.skill, 'deep-interview');
     assert.equal(match.keyword.toLowerCase(), 'deep interview');
   });
+
+  it('detects German localized workflow keywords when OMX_LOCALE=de', () => {
+    const previous = process.env.OMX_LOCALE;
+    process.env.OMX_LOCALE = 'de';
+    try {
+      assert.equal(detectPrimaryKeyword('lass uns planen')?.skill, 'plan');
+      assert.equal(detectPrimaryKeyword('bitte untersuche diesen Fehler')?.skill, 'analyze');
+      assert.equal(detectPrimaryKeyword('bitte prüfe den code')?.skill, 'code-review');
+      assert.equal(detectPrimaryKeyword('bitte verwende ein team für diese Aufgabe')?.skill, 'team');
+    } finally {
+      if (previous === undefined) delete process.env.OMX_LOCALE;
+      else process.env.OMX_LOCALE = previous;
+    }
+  });
 });
 
 describe('keyword registry coverage', () => {

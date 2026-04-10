@@ -14,6 +14,17 @@ This page is the canonical answer to:
 For project scope, `.gitignore` keeps generated `.codex/hooks.json` out of source control.
 `omx uninstall` removes only the OMX-managed wrapper entries from `.codex/hooks.json`; if user hooks remain, the file stays in place.
 
+### Hook localization
+
+- Native hook heuristics keep English phrases active and additionally load the preferred OMX locale when supported (`de`, `ko` today).
+- Preferred locale is auto-detected from `OMX_LOCALE`, then `LC_ALL` / `LC_MESSAGES` / `LANG` / `LANGUAGE`.
+- To force a locale from Codex config, set it in `.codex/config.toml`:
+
+```toml
+[env]
+OMX_LOCALE = "de"
+```
+
 ## Ownership split
 
 - **Native Codex hooks**: `.codex/hooks.json`

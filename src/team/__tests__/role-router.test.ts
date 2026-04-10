@@ -167,11 +167,34 @@ describe('role-router', () => {
       assert.equal(r1.confidence, r2.confidence);
     });
 
-    it('recognizes common Korean documentation/test signals', () => {
-      const docs = routeTaskToRole('문서 업데이트', '배포 가이드와 README 문서를 정리', 'team-exec', 'executor');
-      const tests = routeTaskToRole('테스트 추가', '로그인 흐름 테스트와 커버리지 추가', 'team-exec', 'executor');
-      assert.equal(docs.role, 'writer');
-      assert.equal(tests.role, 'test-engineer');
+    it('recognizes common Korean documentation/test signals when OMX_LOCALE=ko', () => {
+      const previous = process.env.OMX_LOCALE;
+      process.env.OMX_LOCALE = 'ko';
+      try {
+        const docs = routeTaskToRole('문서 업데이트', '배포 가이드와 README 문서를 정리', 'team-exec', 'executor');
+        const tests = routeTaskToRole('테스트 추가', '로그인 흐름 테스트와 커버리지 추가', 'team-exec', 'executor');
+        assert.equal(docs.role, 'writer');
+        assert.equal(tests.role, 'test-engineer');
+      } finally {
+        if (previous === undefined) delete process.env.OMX_LOCALE;
+        else process.env.OMX_LOCALE = previous;
+      }
+    });
+
+    it('recognizes localized German documentation/build/security signals when OMX_LOCALE=de', () => {
+      const previous = process.env.OMX_LOCALE;
+      process.env.OMX_LOCALE = 'de';
+      try {
+        const docs = routeTaskToRole('Dokumentation aktualisieren', 'Dokumentation für die API schreiben', 'team-exec', 'executor');
+        const buildFix = routeTaskToRole('Build reparieren', 'Behebe Build-Fehler und Typfehler', 'team-fix', 'executor');
+        const security = routeTaskToRole('Security Review', 'Prüfe die Sicherheit des Auth-Flows', 'team-verify', 'executor');
+        assert.equal(docs.role, 'writer');
+        assert.equal(buildFix.role, 'build-fixer');
+        assert.equal(security.role, 'security-reviewer');
+      } finally {
+        if (previous === undefined) delete process.env.OMX_LOCALE;
+        else process.env.OMX_LOCALE = previous;
+      }
     });
 
     it('handles null phase gracefully', () => {
