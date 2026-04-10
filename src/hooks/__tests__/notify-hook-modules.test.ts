@@ -261,6 +261,7 @@ describe('notify-hook/auto-nudge – detectStallPattern', () => {
       const { detectStallPattern } = await loadModule('notify-hook/auto-nudge.js');
       assert.equal(detectStallPattern('Möchtest du, dass ich fortfahre?', ['möchtest du']), true);
       assert.equal(detectStallPattern('Wenn du möchtest, kann ich als Nächstes refaktorieren.', ['wenn du möchtest']), true);
+      assert.equal(detectStallPattern('Wenn du willst, kann ich als Nächstes refaktorieren.', ['wenn du willst']), true);
       assert.equal(detectStallPattern('Soll ich weitermachen?', ['soll ich']), true);
     } finally {
       if (previous === undefined) delete process.env.OMX_LOCALE;
